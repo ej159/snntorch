@@ -3,6 +3,17 @@ import nir
 import nirtorch
 import torch
 import snntorch as snn
+from nir.sparse import is_sparse, scipy_to_torch_sparse
+
+
+def preprocess_data(x) -> torch.Tensor:
+    """Help convert stored data into a format that is passable by SNNtorch. This is to allow support for sparse tensors"""
+
+    if not (isinstance(x, torch.Tensor)) and is_sparse(x):
+        return scipy_to_torch_sparse(x, device="cpu")
+    else:
+        return torch.Tensor(x)
+
 
 def _create_rnn_subgraph(
     graph: nir.NIRGraph, lif_nk: str, w_nk: str
@@ -109,7 +120,9 @@ def _replace_rnn_subgraph_with_nirgraph(graph: nir.NIRGraph) -> nir.NIRGraph:
     return graph
 
 
-def _parse_rnn_subgraph(graph: nir.NIRGraph) -> (nir.NIRNode, nir.NIRNode, int):  # type: ignore
+def _parse_rnn_subgraph(
+    graph: nir.NIRGraph,
+) -> (nir.NIRNode, nir.NIRNode, int):  # type: ignore
     """Try parsing the presented graph as a RNN subgraph. Assumes the graph is a valid RNN subgraph
     with four nodes in the following structure:
 
@@ -194,7 +207,8 @@ def _nir_to_snntorch_module(
         mod = torch.nn.Linear(
             node.weight.shape[1], node.weight.shape[0], bias=False
         )
-        mod.weight.data = torch.Tensor(node.weight)
+
+#        mod.weight = torch.nn.Parameter(preprocess_data(node.weight))
 
         return mod
 
@@ -220,7 +234,7 @@ def _nir_to_snntorch_module(
             kernel_size=tuple(node.kernel_size),
             stride=tuple(node.stride),
             padding=tuple(node.padding),
-           # divisor_override=1,
+            # divisor_override=1,
         )
 
     elif isinstance(node, nir.IF):
@@ -325,7 +339,9 @@ def _nir_to_snntorch_module(
             dt = 1e-4
 
             assert np.allclose(lif_node.v_leak, 0), "v_leak not supported"
-            assert np.allclose(lif_node.r, lif_node.tau / dt), "r not supported in LIF"
+            assert np.allclose(
+                lif_node.r, lif_node.tau / dt
+            ), "r not supported in LIF"
 
             beta = 1 - (dt / lif_node.tau)
             vthr = lif_node.v_threshold
@@ -342,7 +358,9 @@ def _nir_to_snntorch_module(
                         "w_scale must be 1, or the same for all neurons"
                     )
 
-            assert np.unique(vthr).size == 1, "LIF v_thr must be same for all neurons"
+            assert (
+                np.unique(vthr).size == 1
+            ), "LIF v_thr must be same for all neurons"
 
             diagonal = np.array_equal(
                 wrec_node.weight, np.diag(np.diag(wrec_node.weight))
@@ -352,7 +370,9 @@ def _nir_to_snntorch_module(
                 beta = float(np.unique(beta)[0])
 
             if diagonal:
-                V = torch.from_numpy(np.diag(wrec_node.weight)).to(dtype=torch.float32)
+                V = torch.from_numpy(np.diag(wrec_node.weight)).to(
+                    dtype=torch.float32
+                )
             else:
                 V = None
 
@@ -376,7 +396,9 @@ def _nir_to_snntorch_module(
                         rleaky.recurrent.bias
                     )
             else:
-                rleaky.recurrent.V.data = torch.diagonal(torch.Tensor(wrec_node.weight))
+                rleaky.recurrent.V.data = torch.diagonal(
+                    torch.Tensor(wrec_node.weight)
+                )
 
             return rleaky
 
