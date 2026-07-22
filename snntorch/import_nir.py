@@ -1,9 +1,10 @@
-import numpy as np
 import nir
 import nirtorch
+import numpy as np
 import torch
-import snntorch as snn
 from nir.sparse import is_sparse, scipy_to_torch_sparse
+
+import snntorch as snn
 
 
 def preprocess_data(x) -> torch.Tensor:
@@ -207,8 +208,7 @@ def _nir_to_snntorch_module(
         mod = torch.nn.Linear(
             node.weight.shape[1], node.weight.shape[0], bias=False
         )
-
-#        mod.weight = torch.nn.Parameter(preprocess_data(node.weight))
+        mod.weight = torch.nn.Parameter(preprocess_data(node.weight))
 
         return mod
 
